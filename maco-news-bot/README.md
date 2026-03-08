@@ -68,4 +68,6 @@ crontab -e
 - `FINAL_TRANSLATE_TO_ZH=1`：是否只翻译最终汇总（默认开启）
 - `SUMMARY_MAX_CHARS=90`：单条摘要截断长度
 - `REQUEST_TIMEOUT=20`：Telegram 请求超时秒数
-- `DIGEST_TITLE="宏观新闻汇总"`：汇总消息标题
+- `DIGEST_TITLE="宏观新闻汇总"`：默认汇总消息标题（非晨/晚时段使用）
+- `MORNING_TITLE="宏观晨报"`：05:00-11:59 的标题
+- `EVENING_TITLE="宏观晚报"`：18:00-23:59 的标题

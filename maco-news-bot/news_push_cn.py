@@ -18,6 +18,8 @@ CHAT_ID = os.getenv("TG_CHAT_ID", "")
 MAX_ITEMS = int(os.getenv("MAX_ITEMS", "8"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "20"))
 DIGEST_TITLE = os.getenv("DIGEST_TITLE", "宏观新闻汇总")
+MORNING_TITLE = os.getenv("MORNING_TITLE", "宏观晨报")
+EVENING_TITLE = os.getenv("EVENING_TITLE", "宏观晚报")
 SUMMARY_MAX_CHARS = int(os.getenv("SUMMARY_MAX_CHARS", "90"))
 FINAL_TRANSLATE_TO_ZH = os.getenv("FINAL_TRANSLATE_TO_ZH", "1") == "1"
 
@@ -169,14 +171,25 @@ def collect_items(sent):
     return items[:MAX_ITEMS]
 
 
+def current_digest_title(now: datetime) -> str:
+    hour = now.hour
+    if 5 <= hour < 12:
+        return MORNING_TITLE
+    if 18 <= hour < 24:
+        return EVENING_TITLE
+    return DIGEST_TITLE
+
+
 def build_english_digest(items):
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_dt = datetime.now()
+    now = now_dt.strftime("%Y-%m-%d %H:%M")
+    title = current_digest_title(now_dt)
     grouped = defaultdict(list)
     for item in items:
         for tag in item["tags"]:
             grouped[tag].append(item)
 
-    parts = [f"[{DIGEST_TITLE}]", f"Time: {now}", f"Total new items: {len(items)}", ""]
+    parts = [f"[{title}]", f"Time: {now}", f"Total new items: {len(items)}", ""]
     for tag in ["A股", "美股", "黄金", "原油", "加密", "汇率债券", "综合"]:
         if tag not in grouped:
             continue
