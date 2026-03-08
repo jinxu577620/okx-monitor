@@ -1,27 +1,17 @@
 [
   {
-    "name": "Reuters World",
-    "url": "https://rsshub.app/reuters/world",
-    "lang": "en"
-  },
-  {
-    "name": "Reuters Business",
-    "url": "https://rsshub.app/reuters/business",
-    "lang": "en"
-  },
-  {
     "name": "Wall Street Journal Markets",
     "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
     "lang": "en"
   },
   {
-    "name": "华尔街见闻热门",
-    "url": "https://rsshub.app/wallstreetcn/hot",
-    "lang": "zh"
+    "name": "Reuters World",
+    "url": "https://feeds.reuters.com/reuters/worldNews",
+    "lang": "en"
   },
   {
-    "name": "财新最新",
-    "url": "https://rsshub.app/caixin/latest",
-    "lang": "zh"
+    "name": "Reuters Business",
+    "url": "https://feeds.reuters.com/reuters/businessNews",
+    "lang": "en"
   }
 ]

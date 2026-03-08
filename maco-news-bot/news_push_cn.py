@@ -11,6 +11,8 @@ from email.utils import parsedate_to_datetime
 import feedparser
 import requests
 from deep_translator import GoogleTranslator
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 CHAT_ID = os.getenv("TG_CHAT_ID", "")
@@ -25,6 +27,11 @@ STATE_FILE = BASE_DIR / "news_state.json"
 FEEDS_FILE = BASE_DIR / "feeds.json"
 
 translator = GoogleTranslator(source="auto", target="zh-CN")
+
+session = requests.Session()
+retry = Retry(total=2, connect=2, read=2, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504])
+session.mount("http://", HTTPAdapter(max_retries=retry))
+session.mount("https://", HTTPAdapter(max_retries=retry))
 
 KEYWORD_RULES = [
     {
@@ -123,7 +130,8 @@ def zh(text: str, lang: str = "auto") -> str:
     if not TRANSLATE_TO_ZH or lang.lower().startswith("zh"):
         return text
     try:
-        return translator.translate(text)
+        short_text = text[:1200]
+        return translator.translate(short_text)
     except Exception:
         return text
 
@@ -132,7 +140,7 @@ def send(msg: str):
     if not BOT_TOKEN or not CHAT_ID:
         raise SystemExit("请先设置环境变量 TG_BOT_TOKEN 和 TG_CHAT_ID")
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    r = requests.post(url, json={"chat_id": CHAT_ID, "text": msg[:4000]}, timeout=REQUEST_TIMEOUT)
+    r = session.post(url, json={"chat_id": CHAT_ID, "text": msg[:4000]}, timeout=REQUEST_TIMEOUT)
     r.raise_for_status()
 
 
@@ -189,10 +197,14 @@ def collect_items(sent):
     items = []
     feeds = load_feeds()
     for feed in feeds:
-        parsed = feedparser.parse(feed["url"])
+        try:
+            parsed = feedparser.parse(feed["url"])
+        except Exception as ex:
+            print(f"feed parse failed: {feed.get('name', feed['url'])}: {ex}")
+            continue
         source_name = feed.get("name", feed["url"])
         lang = feed.get("lang", "auto")
-        for e in parsed.entries[:30]:
+        for e in parsed.entries[:15]:
             uid = getattr(e, "id", "") or getattr(e, "link", "") or (
                 getattr(e, "title", "") + str(getattr(e, "published", ""))
             )
