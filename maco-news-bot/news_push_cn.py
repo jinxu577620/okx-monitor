@@ -106,7 +106,7 @@ def parse_dt(text: str):
         return None
 
 
-def infer_direction(text: str):
+def infer_direction_score(text: str):
     hay = (text or "").lower()
     score = 0
     for hint in POSITIVE_HINTS:
@@ -115,11 +115,15 @@ def infer_direction(text: str):
     for hint in NEGATIVE_HINTS:
         if hint in hay:
             score -= 1
+    return score
+
+
+def infer_direction_label(score: int):
     if score >= 2:
-        return "Risk-on / bullish"
+        return "偏多"
     if score <= -2:
-        return "Risk-off / bearish"
-    return "Neutral / mixed"
+        return "偏空"
+    return "中性"
 
 
 def infer_tags(text: str):
@@ -154,6 +158,7 @@ def collect_items(sent):
             published = getattr(e, "published", "")
             dt = parse_dt(published)
             text = f"{title} {summary}"
+            score = infer_direction_score(text)
             items.append(
                 {
                     "uid": uid,
@@ -163,7 +168,8 @@ def collect_items(sent):
                     "link": getattr(e, "link", ""),
                     "published": published,
                     "published_ts": dt.timestamp() if dt else 0,
-                    "direction": infer_direction(text),
+                    "direction_score": score,
+                    "direction": infer_direction_label(score),
                     "tags": infer_tags(text),
                 }
             )
@@ -182,34 +188,74 @@ def current_digest_title(now: datetime) -> str:
 
 def build_english_digest(items):
     now_dt = datetime.now()
-    now = now_dt.strftime("%Y-%m-%d %H:%M")
     title = current_digest_title(now_dt)
+    time_text = now_dt.strftime("%Y-%m-%d %H:%M")
+
     grouped = defaultdict(list)
     for item in items:
         for tag in item["tags"]:
             grouped[tag].append(item)
 
-    parts = [f"[{title}]", f"Time: {now}", f"Total new items: {len(items)}", ""]
-    for tag in ["A股", "美股", "黄金", "原油", "加密", "汇率债券", "综合"]:
-        if tag not in grouped:
-            continue
-        parts.append(f"# {tag}")
-        for idx, item in enumerate(grouped[tag][:3], start=1):
-            bullet = f"{idx}. {item['title']}"
-            if item['summary']:
-                bullet += f" | {item['summary']}"
-            bullet += f" | {item['direction']}"
-            parts.append(bullet)
-        parts.append("")
+    total_score = sum(item["direction_score"] for item in items)
+    overall = "Overall neutral"
+    if total_score >= 3:
+        overall = "Overall mildly bullish for risk assets"
+    elif total_score <= -3:
+        overall = "Overall mildly bearish for risk assets"
 
-    parts.append("Key takeaways:")
-    top = items[:3]
-    for item in top:
-        parts.append(f"- {'/'.join(item['tags'])}: {item['direction']} based on headline flow.")
+    top_items = items[:3]
 
-    parts.append("")
-    parts.append("Please translate the above macro digest into concise Chinese for a trader. Keep structure, keep tags, and write market impact in Chinese.")
-    return "\n".join(parts)[:3600]
+    lines = [
+        f"{title}",
+        f"Time: {time_text}",
+        "",
+        "Section 1 - Top 3 stories",
+    ]
+    for i, item in enumerate(top_items, 1):
+        lines.append(f"{i}. [{'/'.join(item['tags'])}] {item['title']}")
+
+    lines.extend([
+        "",
+        "Section 2 - Market impact",
+        f"A-shares: {summarize_tag(grouped, 'A股')}",
+        f"US stocks: {summarize_tag(grouped, '美股')}",
+        f"Gold: {summarize_tag(grouped, '黄金')}",
+        f"Oil: {summarize_tag(grouped, '原油')}",
+        f"Crypto: {summarize_tag(grouped, '加密')}",
+        "",
+        "Section 3 - Quick notes",
+    ])
+
+    quick_notes = []
+    for item in items[:5]:
+        quick_notes.append(f"- [{'/'.join(item['tags'])}] {item['title']} | {item['direction']}")
+    lines.extend(quick_notes)
+
+    lines.extend([
+        "",
+        "Section 4 - One-line takeaway",
+        f"- {overall}",
+        "",
+        "Please translate all content above into concise, clean Chinese for a daily macro briefing. Use this exact structure and style:",
+        "1) title line",
+        "2) 今日最重要3条",
+        "3) 市场影响",
+        "4) 简讯速览",
+        "5) 一句话总结",
+        "Keep it short, readable, trader-friendly, and well spaced.",
+    ])
+    return "\n".join(lines)[:3600]
+
+
+def summarize_tag(grouped, tag):
+    if tag not in grouped or not grouped[tag]:
+        return "No major fresh driver"
+    scores = sum(item["direction_score"] for item in grouped[tag][:3])
+    if scores >= 2:
+        return "Bias positive"
+    if scores <= -2:
+        return "Bias negative"
+    return "Mixed / watch headline follow-through"
 
 
 def main():
