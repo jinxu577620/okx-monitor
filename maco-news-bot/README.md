@@ -26,6 +26,12 @@ pip install -U pip -r requirements.txt
 ```
 
 ## 环境变量
+你现在已经可以直接用项目里的 `.env`：
+```bash
+source .env
+```
+
+如果要手动覆盖，也可以：
 ```bash
 export TG_BOT_TOKEN="你的_bot_token"
 export TG_CHAT_ID="你的_chat_id"
@@ -35,6 +41,7 @@ export TG_CHAT_ID="你的_chat_id"
 ```bash
 cd /Users/jinxu/.openclaw/workspace】/maco-news-bot
 source .venv/bin/activate
+source .env
 python news_push_cn.py
 ```
 
