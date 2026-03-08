@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import time
 from pathlib import Path
 
@@ -12,39 +13,101 @@ BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 CHAT_ID = os.getenv("TG_CHAT_ID", "")
 MAX_ITEMS = int(os.getenv("MAX_ITEMS", "8"))
 TRANSLATE_TO_ZH = os.getenv("TRANSLATE_TO_ZH", "1") == "1"
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "20"))
 
-FEEDS = [
-    "https://rsshub.app/reuters/world",
-    "https://rsshub.app/reuters/business",
-]
-
-STATE_FILE = Path("news_state.json")
-
-
-def load_sent():
-    if not STATE_FILE.exists():
-        return set()
-    try:
-        return set(json.loads(STATE_FILE.read_text(encoding="utf-8")))
-    except Exception:
-        return set()
-
-
-def save_sent(sent):
-    STATE_FILE.write_text(
-        json.dumps(list(sent)[-5000:], ensure_ascii=False),
-        encoding="utf-8",
-    )
-
+BASE_DIR = Path(__file__).resolve().parent
+STATE_FILE = BASE_DIR / "news_state.json"
+FEEDS_FILE = BASE_DIR / "feeds.json"
 
 translator = GoogleTranslator(source="auto", target="zh-CN")
 
 
-def zh(text: str) -> str:
-    text = (text or "").strip()
+KEYWORD_RULES = [
+    {
+        "keywords": ["fed", "federal reserve", "rate hike", "rate cut", "powell", "美联储", "降息", "加息"],
+        "asset": "A股/港股/美股/黄金/美元/加密",
+        "bull": "降息预期升温通常利多风险资产与黄金，利空美元。",
+        "bear": "加息或鹰派表态通常压制风险资产，利多美元。",
+    },
+    {
+        "keywords": ["cpi", "ppi", "inflation", "通胀", "物价"],
+        "asset": "股市/债市/黄金/美元",
+        "bull": "通胀回落通常利多股市与债市，也有利于降息预期交易。",
+        "bear": "通胀超预期通常打压股市，强化高利率预期。",
+    },
+    {
+        "keywords": ["nonfarm", "payrolls", "unemployment", "就业", "失业率", "非农"],
+        "asset": "美股/美元/黄金/加密",
+        "bull": "就业温和走弱有时利多降息预期交易。",
+        "bear": "就业过热通常强化高利率预期。",
+    },
+    {
+        "keywords": ["oil", "opec", "crude", "原油", "opec+"],
+        "asset": "原油/通胀链/A股周期股",
+        "bull": "供给收缩或油价上行利多油气链。",
+        "bear": "需求走弱或增产预期利空油价。",
+    },
+    {
+        "keywords": ["tariff", "sanction", "trade war", "制裁", "关税", "贸易"],
+        "asset": "A股出口链/全球股市/大宗商品",
+        "bull": "缓和信号利多风险偏好。",
+        "bear": "摩擦升级通常压制风险偏好。",
+    },
+    {
+        "keywords": ["china", "pboC", "刺激", "社融", "信贷", "人民币", "央行"],
+        "asset": "A股/港股/人民币/地产链",
+        "bull": "宽信用、稳增长、刺激政策通常利多A股和港股。",
+        "bear": "弱于预期的数据或收紧信号通常偏空。",
+    },
+    {
+        "keywords": ["bitcoin", "btc", "ethereum", "eth", "crypto", "加密", "比特币", "以太坊"],
+        "asset": "加密货币/美股风险偏好",
+        "bull": "ETF流入、宽松预期、监管友好通常利多加密。",
+        "bear": "监管收紧、美元走强或风险偏好下降通常利空加密。",
+    },
+]
+
+POSITIVE_HINTS = ["cut", "easing", "stimulus", "cooling", "decline", "support", "boost", "record inflow", "宽松", "刺激", "回落", "支持", "提振", "改善", "下降"]
+NEGATIVE_HINTS = ["hike", "hotter", "surge", "warning", "sanction", "tariff", "selloff", "drop", "tightening", "加息", "制裁", "关税", "下滑", "走弱", "紧缩", "上升"]
+
+
+def load_json(path: Path, default):
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def save_json(path: Path, data):
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_sent():
+    return set(load_json(STATE_FILE, []))
+
+
+def save_sent(sent):
+    save_json(STATE_FILE, list(sent)[-5000:])
+
+
+def load_feeds():
+    return load_json(FEEDS_FILE, [])
+
+
+def clean_text(text: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", text or "")
+    text = text.replace("&nbsp;", " ").replace("&amp;", "&")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def zh(text: str, lang: str = "auto") -> str:
+    text = clean_text(text)
     if not text:
         return ""
-    if not TRANSLATE_TO_ZH:
+    if not TRANSLATE_TO_ZH or lang.lower().startswith("zh"):
         return text
     try:
         return translator.translate(text)
@@ -56,22 +119,56 @@ def send(msg: str):
     if not BOT_TOKEN or not CHAT_ID:
         raise SystemExit("请先设置环境变量 TG_BOT_TOKEN 和 TG_CHAT_ID")
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    r = requests.post(url, json={"chat_id": CHAT_ID, "text": msg[:4000]}, timeout=20)
+    r = requests.post(url, json={"chat_id": CHAT_ID, "text": msg[:4000]}, timeout=REQUEST_TIMEOUT)
     r.raise_for_status()
+
+
+def infer_impact(text: str):
+    haystack = (text or "").lower()
+    matched_assets = []
+    views = []
+    score = 0
+
+    for rule in KEYWORD_RULES:
+        if any(keyword.lower() in haystack for keyword in rule["keywords"]):
+            matched_assets.append(rule["asset"])
+            views.append(f"若偏鸽/偏暖：{rule['bull']}")
+            views.append(f"若偏鹰/偏冷：{rule['bear']}")
+
+    for hint in POSITIVE_HINTS:
+        if hint.lower() in haystack:
+            score += 1
+    for hint in NEGATIVE_HINTS:
+        if hint.lower() in haystack:
+            score -= 1
+
+    if score >= 2:
+        direction = "偏利多风险资产"
+    elif score <= -2:
+        direction = "偏利空风险资产"
+    else:
+        direction = "中性，需结合正文判断"
+
+    assets = "；".join(dict.fromkeys(matched_assets)) if matched_assets else "A股/港股/美股/黄金/原油/加密"
+    conclusion = views[:2] if views else ["需要结合新闻正文进一步判断对市场的实际影响。"]
+    return assets, direction, conclusion
 
 
 def collect_items(sent):
     items = []
-    for feed in FEEDS:
-        parsed = feedparser.parse(feed)
+    feeds = load_feeds()
+    for feed in feeds:
+        parsed = feedparser.parse(feed["url"])
+        source_name = feed.get("name", feed["url"])
+        lang = feed.get("lang", "auto")
         for e in parsed.entries[:30]:
             uid = getattr(e, "id", "") or getattr(e, "link", "") or (
                 getattr(e, "title", "") + str(getattr(e, "published", ""))
             )
             if not uid or uid in sent:
                 continue
-            title = getattr(e, "title", "").strip()
-            summary = getattr(e, "summary", "") or getattr(e, "description", "") or ""
+            title = clean_text(getattr(e, "title", ""))
+            summary = clean_text(getattr(e, "summary", "") or getattr(e, "description", "") or "")
             link = getattr(e, "link", "")
             published = getattr(e, "published", "")
             if title:
@@ -82,24 +179,33 @@ def collect_items(sent):
                         "summary": summary,
                         "link": link,
                         "published": published,
+                        "source": source_name,
+                        "lang": lang,
                     }
                 )
     return items
 
 
 def format_message(item):
-    title_cn = zh(item["title"])
-    summary_cn = zh(item["summary"])
-    summary_cn = summary_cn.replace("\n", " ").strip()
-    if len(summary_cn) > 220:
-        summary_cn = summary_cn[:220] + "…"
+    title_cn = zh(item["title"], item["lang"])
+    summary_cn = zh(item["summary"], item["lang"])
+    if len(summary_cn) > 180:
+        summary_cn = summary_cn[:180] + "…"
+
+    assets, direction, conclusion = infer_impact(f"{title_cn} {summary_cn}")
 
     parts = [
-        "【宏观快讯】",
+        "【宏观新闻】",
+        f"来源：{item['source']}",
         f"标题：{title_cn or item['title']}",
     ]
     if summary_cn:
         parts.append(f"摘要：{summary_cn}")
+    parts.append(f"影响资产：{assets}")
+    parts.append(f"影响方向：{direction}")
+    parts.append(f"一句话解读：{conclusion[0]}")
+    if len(conclusion) > 1:
+        parts.append(f"补充：{conclusion[1]}")
     if item["published"]:
         parts.append(f"时间：{item['published']}")
     if item["link"]:
