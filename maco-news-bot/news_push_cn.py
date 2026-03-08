@@ -18,6 +18,8 @@ BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
 CHAT_ID = os.getenv("TG_CHAT_ID", "")
 MAX_ITEMS = int(os.getenv("MAX_ITEMS", "8"))
 TRANSLATE_TO_ZH = os.getenv("TRANSLATE_TO_ZH", "1") == "1"
+TRANSLATE_SUMMARY = os.getenv("TRANSLATE_SUMMARY", "0") == "1"
+SUMMARY_MAX_CHARS = int(os.getenv("SUMMARY_MAX_CHARS", "90"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "20"))
 DIGEST_MODE = os.getenv("DIGEST_MODE", "1") == "1"
 DIGEST_TITLE = os.getenv("DIGEST_TITLE", "宏观新闻汇总")
@@ -123,14 +125,16 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
-def zh(text: str, lang: str = "auto") -> str:
+def zh(text: str, lang: str = "auto", allow_summary_translate: bool = True) -> str:
     text = clean_text(text)
     if not text:
         return ""
     if not TRANSLATE_TO_ZH or lang.lower().startswith("zh"):
         return text
+    if not allow_summary_translate:
+        return text
     try:
-        short_text = text[:1200]
+        short_text = text[:600]
         return translator.translate(short_text)
     except Exception:
         return text
@@ -212,20 +216,21 @@ def collect_items(sent):
                 continue
             title = clean_text(getattr(e, "title", ""))
             summary = clean_text(getattr(e, "summary", "") or getattr(e, "description", "") or "")
+            summary_short = summary[:SUMMARY_MAX_CHARS]
             link = getattr(e, "link", "")
             published = getattr(e, "published", "")
             published_dt = parse_dt(published)
             if title:
-                title_cn = zh(title, lang)
-                summary_cn = zh(summary, lang)
-                text_for_analysis = f"{title_cn} {summary_cn}"
+                title_cn = zh(title, lang, allow_summary_translate=True)
+                summary_text = zh(summary_short, lang, allow_summary_translate=TRANSLATE_SUMMARY)
+                text_for_analysis = f"{title_cn} {summary_text}"
                 assets, direction, conclusion = infer_impact(text_for_analysis)
                 tags = infer_tags(text_for_analysis)
                 items.append(
                     {
                         "uid": uid,
                         "title": title_cn or title,
-                        "summary": summary_cn,
+                        "summary": summary_text,
                         "link": link,
                         "published": published,
                         "published_ts": published_dt.timestamp() if published_dt else 0,

@@ -74,6 +74,8 @@ crontab -e
 ## 可选项
 - `MAX_ITEMS=8`：每次最多推送条数
 - `TRANSLATE_TO_ZH=1`：是否翻译为中文（默认开启）
+- `TRANSLATE_SUMMARY=0`：是否翻译摘要（默认关闭，避免卡顿）
+- `SUMMARY_MAX_CHARS=90`：摘要截断长度
 - `REQUEST_TIMEOUT=20`：Telegram 请求超时秒数
 - `DIGEST_MODE=1`：是否启用汇总模式（默认开启）
 - `DIGEST_TITLE="宏观新闻汇总"`：汇总消息标题
