@@ -1,0 +1,6 @@
+maco-news-bot/.venv/
+maco-news-bot/news_state.json
+maco-news-bot/news.log
+maco-news-bot/.env
+__pycache__/
+*.pyc
