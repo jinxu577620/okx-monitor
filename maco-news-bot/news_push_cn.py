@@ -3,7 +3,10 @@ import json
 import os
 import re
 import time
+from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
+from email.utils import parsedate_to_datetime
 
 import feedparser
 import requests
@@ -14,13 +17,14 @@ CHAT_ID = os.getenv("TG_CHAT_ID", "")
 MAX_ITEMS = int(os.getenv("MAX_ITEMS", "8"))
 TRANSLATE_TO_ZH = os.getenv("TRANSLATE_TO_ZH", "1") == "1"
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "20"))
+DIGEST_MODE = os.getenv("DIGEST_MODE", "1") == "1"
+DIGEST_TITLE = os.getenv("DIGEST_TITLE", "宏观新闻汇总")
 
 BASE_DIR = Path(__file__).resolve().parent
 STATE_FILE = BASE_DIR / "news_state.json"
 FEEDS_FILE = BASE_DIR / "feeds.json"
 
 translator = GoogleTranslator(source="auto", target="zh-CN")
-
 
 KEYWORD_RULES = [
     {
@@ -54,7 +58,7 @@ KEYWORD_RULES = [
         "bear": "摩擦升级通常压制风险偏好。",
     },
     {
-        "keywords": ["china", "pboC", "刺激", "社融", "信贷", "人民币", "央行"],
+        "keywords": ["china", "pboc", "刺激", "社融", "信贷", "人民币", "央行"],
         "asset": "A股/港股/人民币/地产链",
         "bull": "宽信用、稳增长、刺激政策通常利多A股和港股。",
         "bear": "弱于预期的数据或收紧信号通常偏空。",
@@ -65,6 +69,15 @@ KEYWORD_RULES = [
         "bull": "ETF流入、宽松预期、监管友好通常利多加密。",
         "bear": "监管收紧、美元走强或风险偏好下降通常利空加密。",
     },
+]
+
+TAG_RULES = [
+    ("A股", ["a股", "china", "pboc", "社融", "信贷", "人民币", "地产", "刺激", "央行", "沪深", "中概"]),
+    ("美股", ["us stocks", "wall street", "nasdaq", "s&p", "dow", "美股", "标普", "纳指"]),
+    ("黄金", ["gold", "黄金", "bullion"]),
+    ("原油", ["oil", "crude", "opec", "原油", "opec+"]),
+    ("加密", ["bitcoin", "btc", "ethereum", "eth", "crypto", "加密", "比特币", "以太坊"]),
+    ("汇率债券", ["treasury", "yield", "bond", "dollar", "fx", "汇率", "债", "美债", "美元"]),
 ]
 
 POSITIVE_HINTS = ["cut", "easing", "stimulus", "cooling", "decline", "support", "boost", "record inflow", "宽松", "刺激", "回落", "支持", "提振", "改善", "下降"]
@@ -123,6 +136,15 @@ def send(msg: str):
     r.raise_for_status()
 
 
+def parse_dt(text: str):
+    if not text:
+        return None
+    try:
+        return parsedate_to_datetime(text)
+    except Exception:
+        return None
+
+
 def infer_impact(text: str):
     haystack = (text or "").lower()
     matched_assets = []
@@ -154,6 +176,15 @@ def infer_impact(text: str):
     return assets, direction, conclusion
 
 
+def infer_tags(text: str):
+    haystack = (text or "").lower()
+    tags = []
+    for tag, keywords in TAG_RULES:
+        if any(keyword.lower() in haystack for keyword in keywords):
+            tags.append(tag)
+    return tags or ["综合"]
+
+
 def collect_items(sent):
     items = []
     feeds = load_feeds()
@@ -171,41 +202,50 @@ def collect_items(sent):
             summary = clean_text(getattr(e, "summary", "") or getattr(e, "description", "") or "")
             link = getattr(e, "link", "")
             published = getattr(e, "published", "")
+            published_dt = parse_dt(published)
             if title:
+                title_cn = zh(title, lang)
+                summary_cn = zh(summary, lang)
+                text_for_analysis = f"{title_cn} {summary_cn}"
+                assets, direction, conclusion = infer_impact(text_for_analysis)
+                tags = infer_tags(text_for_analysis)
                 items.append(
                     {
                         "uid": uid,
-                        "title": title,
-                        "summary": summary,
+                        "title": title_cn or title,
+                        "summary": summary_cn,
                         "link": link,
                         "published": published,
+                        "published_ts": published_dt.timestamp() if published_dt else 0,
                         "source": source_name,
-                        "lang": lang,
+                        "assets": assets,
+                        "direction": direction,
+                        "conclusion": conclusion,
+                        "tags": tags,
                     }
                 )
+    items.sort(key=lambda x: x.get("published_ts", 0), reverse=True)
     return items
 
 
-def format_message(item):
-    title_cn = zh(item["title"], item["lang"])
-    summary_cn = zh(item["summary"], item["lang"])
+def format_single_message(item):
+    summary_cn = item["summary"]
     if len(summary_cn) > 180:
         summary_cn = summary_cn[:180] + "…"
 
-    assets, direction, conclusion = infer_impact(f"{title_cn} {summary_cn}")
-
     parts = [
         "【宏观新闻】",
+        f"标签：{' / '.join(item['tags'])}",
         f"来源：{item['source']}",
-        f"标题：{title_cn or item['title']}",
+        f"标题：{item['title']}",
     ]
     if summary_cn:
         parts.append(f"摘要：{summary_cn}")
-    parts.append(f"影响资产：{assets}")
-    parts.append(f"影响方向：{direction}")
-    parts.append(f"一句话解读：{conclusion[0]}")
-    if len(conclusion) > 1:
-        parts.append(f"补充：{conclusion[1]}")
+    parts.append(f"影响资产：{item['assets']}")
+    parts.append(f"影响方向：{item['direction']}")
+    parts.append(f"一句话解读：{item['conclusion'][0]}")
+    if len(item["conclusion"]) > 1:
+        parts.append(f"补充：{item['conclusion'][1]}")
     if item["published"]:
         parts.append(f"时间：{item['published']}")
     if item["link"]:
@@ -213,14 +253,60 @@ def format_message(item):
     return "\n".join(parts)
 
 
+def build_digest(items):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    grouped = defaultdict(list)
+    for item in items:
+        for tag in item["tags"]:
+            grouped[tag].append(item)
+
+    parts = [f"【{DIGEST_TITLE}】", f"时间：{now}", f"共 {len(items)} 条新消息"]
+    for tag in ["A股", "美股", "黄金", "原油", "加密", "汇率债券", "综合"]:
+        if tag not in grouped:
+            continue
+        parts.append("")
+        parts.append(f"# {tag}")
+        for idx, item in enumerate(grouped[tag][:3], start=1):
+            summary = item["summary"]
+            if len(summary) > 60:
+                summary = summary[:60] + "…"
+            bullet = f"{idx}. {item['title']}"
+            if summary:
+                bullet += f"｜{summary}"
+            bullet += f"｜{item['direction']}"
+            parts.append(bullet)
+
+    parts.append("")
+    parts.append("重点解读：")
+    for item in items[:3]:
+        parts.append(f"- {' / '.join(item['tags'])}：{item['conclusion'][0]}")
+
+    text = "\n".join(parts)
+    return text[:3900]
+
+
 def main():
     sent = load_sent()
-    items = collect_items(sent)
-    pushed = 0
+    items = collect_items(sent)[:MAX_ITEMS]
+    if not items:
+        print("pushed 0 new items")
+        return
 
-    for item in items[:MAX_ITEMS]:
+    if DIGEST_MODE:
         try:
-            send(format_message(item))
+            send(build_digest(items))
+            for item in items:
+                sent.add(item["uid"])
+            save_sent(sent)
+            print(f"pushed digest with {len(items)} items")
+            return
+        except Exception as ex:
+            print("digest send failed:", ex)
+
+    pushed = 0
+    for item in items:
+        try:
+            send(format_single_message(item))
             sent.add(item["uid"])
             pushed += 1
             time.sleep(1.0)
