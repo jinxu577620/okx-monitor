@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jinxu.maco-news.evening</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd '/Users/jinxu/.openclaw/workspace】/maco-news-bot' && source .env && source .venv/bin/activate && python news_push_cn.py >> '/Users/jinxu/.openclaw/workspace】/maco-news-bot/news.log' 2>&1</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>20</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/jinxu/.openclaw/workspace】/maco-news-bot</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/jinxu/.openclaw/workspace】/maco-news-bot/launchd-evening.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jinxu/.openclaw/workspace】/maco-news-bot/launchd-evening.err.log</string>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
