@@ -84,7 +84,7 @@ def maybe_translate(text: str) -> str:
     if not text or not FINAL_TRANSLATE_TO_ZH:
         return text
     try:
-        return translator.translate(text[:3500])
+        return translator.translate(text[:500])
     except Exception:
         return text
 
@@ -186,76 +186,71 @@ def current_digest_title(now: datetime) -> str:
     return DIGEST_TITLE
 
 
-def build_english_digest(items):
+def zh_short(text: str) -> str:
+    text = clean_text(text)
+    if not text:
+        return ""
+    if not FINAL_TRANSLATE_TO_ZH:
+        return text
+    return maybe_translate(text)
+
+
+def summarize_tag(grouped, tag):
+    if tag not in grouped or not grouped[tag]:
+        return "暂无明显新增驱动"
+    scores = sum(item["direction_score"] for item in grouped[tag][:3])
+    if scores >= 2:
+        return "短线偏多，关注情绪延续"
+    if scores <= -2:
+        return "短线偏空，注意回撤压力"
+    return "多空交织，观察后续发酵"
+
+
+def build_fixed_chinese_digest(items):
     now_dt = datetime.now()
     title = current_digest_title(now_dt)
-    time_text = now_dt.strftime("%Y-%m-%d %H:%M")
 
     grouped = defaultdict(list)
     for item in items:
         for tag in item["tags"]:
             grouped[tag].append(item)
 
-    total_score = sum(item["direction_score"] for item in items)
-    overall = "Overall neutral"
-    if total_score >= 3:
-        overall = "Overall mildly bullish for risk assets"
-    elif total_score <= -3:
-        overall = "Overall mildly bearish for risk assets"
-
     top_items = items[:3]
+    quick_items = items[:5]
+    total_score = sum(item["direction_score"] for item in items)
+    if total_score >= 3:
+        overall = "整体偏多，风险偏好略有抬升。"
+    elif total_score <= -3:
+        overall = "整体偏空，短线注意避险情绪。"
+    else:
+        overall = "整体偏中性，重点看后续催化是否扩散。"
 
-    lines = [
-        f"{title}",
-        f"Time: {time_text}",
-        "",
-        "Section 1 - Top 3 stories",
-    ]
+    lines = [title, ""]
+
+    lines.append("今日最重要3条")
     for i, item in enumerate(top_items, 1):
-        lines.append(f"{i}. [{'/'.join(item['tags'])}] {item['title']}")
+        title_cn = zh_short(item["title"])
+        lines.append(f"- {i}. [{'/'.join(item['tags'])}] {title_cn}")
+    lines.append("")
 
-    lines.extend([
-        "",
-        "Section 2 - Market impact",
-        f"A-shares: {summarize_tag(grouped, 'A股')}",
-        f"US stocks: {summarize_tag(grouped, '美股')}",
-        f"Gold: {summarize_tag(grouped, '黄金')}",
-        f"Oil: {summarize_tag(grouped, '原油')}",
-        f"Crypto: {summarize_tag(grouped, '加密')}",
-        "",
-        "Section 3 - Quick notes",
-    ])
+    lines.append("市场影响")
+    lines.append(f"- A股：{summarize_tag(grouped, 'A股')}")
+    lines.append(f"- 美股：{summarize_tag(grouped, '美股')}")
+    lines.append(f"- 黄金：{summarize_tag(grouped, '黄金')}")
+    lines.append(f"- 原油：{summarize_tag(grouped, '原油')}")
+    lines.append(f"- 加密：{summarize_tag(grouped, '加密')}")
+    lines.append("")
 
-    quick_notes = []
-    for item in items[:5]:
-        quick_notes.append(f"- [{'/'.join(item['tags'])}] {item['title']} | {item['direction']}")
-    lines.extend(quick_notes)
+    lines.append("简讯速览")
+    for item in quick_items:
+        title_cn = zh_short(item["title"])
+        lines.append(f"- [{'/'.join(item['tags'])}] {title_cn}（{item['direction']}）")
+    lines.append("")
 
-    lines.extend([
-        "",
-        "Section 4 - One-line takeaway",
-        f"- {overall}",
-        "",
-        "Please translate all content above into concise, clean Chinese for a daily macro briefing. Use this exact structure and style:",
-        "1) title line",
-        "2) 今日最重要3条",
-        "3) 市场影响",
-        "4) 简讯速览",
-        "5) 一句话总结",
-        "Keep it short, readable, trader-friendly, and well spaced.",
-    ])
-    return "\n".join(lines)[:3600]
+    lines.append("一句话总结")
+    lines.append(f"- {overall}")
 
-
-def summarize_tag(grouped, tag):
-    if tag not in grouped or not grouped[tag]:
-        return "No major fresh driver"
-    scores = sum(item["direction_score"] for item in grouped[tag][:3])
-    if scores >= 2:
-        return "Bias positive"
-    if scores <= -2:
-        return "Bias negative"
-    return "Mixed / watch headline follow-through"
+    return "\n".join(lines)
 
 
 def main():
@@ -265,8 +260,7 @@ def main():
         print("pushed 0 new items")
         return
 
-    english_digest = build_english_digest(items)
-    final_text = maybe_translate(english_digest)
+    final_text = build_fixed_chinese_digest(items)
     send(final_text)
 
     for item in items:
