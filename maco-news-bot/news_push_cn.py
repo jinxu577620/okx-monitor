@@ -3,7 +3,7 @@ import json
 import os
 import re
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from email.utils import parsedate_to_datetime
 
@@ -25,6 +25,7 @@ FINAL_TRANSLATE_TO_ZH = os.getenv("FINAL_TRANSLATE_TO_ZH", "1") == "1"
 
 BASE_DIR = Path(__file__).resolve().parent
 STATE_FILE = BASE_DIR / "news_state.json"
+WINDOW_STATE_FILE = BASE_DIR / "window_state.json"
 FEEDS_FILE = BASE_DIR / "feeds.json"
 
 translator = GoogleTranslator(source="auto", target="zh-CN")
@@ -68,6 +69,14 @@ def save_sent(sent):
     save_json(STATE_FILE, list(sent)[-5000:])
 
 
+def load_window_state():
+    return load_json(WINDOW_STATE_FILE, {})
+
+
+def save_window_state(state):
+    save_json(WINDOW_STATE_FILE, state)
+
+
 def load_feeds():
     return load_json(FEEDS_FILE, [])
 
@@ -101,7 +110,10 @@ def parse_dt(text: str):
     if not text:
         return None
     try:
-        return parsedate_to_datetime(text)
+        dt = parsedate_to_datetime(text)
+        if dt.tzinfo is None:
+            return dt
+        return dt.astimezone().replace(tzinfo=None)
     except Exception:
         return None
 
@@ -135,7 +147,7 @@ def infer_tags(text: str):
     return tags or ["综合"]
 
 
-def collect_items(sent):
+def collect_all_items():
     items = []
     feeds = load_feeds()
     for feed in feeds:
@@ -145,11 +157,11 @@ def collect_items(sent):
             print(f"feed parse failed: {feed.get('name', feed['url'])}: {ex}")
             continue
         source_name = feed.get("name", feed["url"])
-        for e in parsed.entries[:15]:
+        for e in parsed.entries[:20]:
             uid = getattr(e, "id", "") or getattr(e, "link", "") or (
                 getattr(e, "title", "") + str(getattr(e, "published", ""))
             )
-            if not uid or uid in sent:
+            if not uid:
                 continue
             title = clean_text(getattr(e, "title", ""))
             summary = clean_text(getattr(e, "summary", "") or getattr(e, "description", "") or "")
@@ -168,13 +180,14 @@ def collect_items(sent):
                     "link": getattr(e, "link", ""),
                     "published": published,
                     "published_ts": dt.timestamp() if dt else 0,
+                    "published_dt": dt.isoformat() if dt else "",
                     "direction_score": score,
                     "direction": infer_direction_label(score),
                     "tags": infer_tags(text),
                 }
             )
     items.sort(key=lambda x: x.get("published_ts", 0), reverse=True)
-    return items[:MAX_ITEMS]
+    return items
 
 
 def current_digest_title(now: datetime) -> str:
@@ -184,6 +197,21 @@ def current_digest_title(now: datetime) -> str:
     if 18 <= hour < 24:
         return EVENING_TITLE
     return DIGEST_TITLE
+
+
+def current_window(now: datetime):
+    hour = now.hour
+    if 5 <= hour < 12:
+        start = (now - timedelta(days=1)).replace(hour=20, minute=0, second=0, microsecond=0)
+        end = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        return "morning", start, end, MORNING_TITLE
+    if 18 <= hour < 24:
+        start = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        end = now.replace(hour=20, minute=0, second=0, microsecond=0)
+        return "evening", start, end, EVENING_TITLE
+    start = now - timedelta(hours=12)
+    end = now
+    return "rolling", start, end, DIGEST_TITLE
 
 
 def zh_short(text: str) -> str:
@@ -206,10 +234,7 @@ def summarize_tag(grouped, tag):
     return "多空交织，观察后续发酵"
 
 
-def build_fixed_chinese_digest(items):
-    now_dt = datetime.now()
-    title = current_digest_title(now_dt)
-
+def build_fixed_chinese_digest(items, title):
     grouped = defaultdict(list)
     for item in items:
         for tag in item["tags"]:
@@ -226,11 +251,9 @@ def build_fixed_chinese_digest(items):
         overall = "整体偏中性，重点看后续催化是否扩散。"
 
     lines = [title, ""]
-
     lines.append("今日最重要3条")
     for i, item in enumerate(top_items, 1):
-        title_cn = zh_short(item["title"])
-        lines.append(f"- {i}. [{'/'.join(item['tags'])}] {title_cn}")
+        lines.append(f"- {i}. [{'/'.join(item['tags'])}] {zh_short(item['title'])}")
     lines.append("")
 
     lines.append("市场影响")
@@ -243,30 +266,53 @@ def build_fixed_chinese_digest(items):
 
     lines.append("简讯速览")
     for item in quick_items:
-        title_cn = zh_short(item["title"])
-        lines.append(f"- [{'/'.join(item['tags'])}] {title_cn}（{item['direction']}）")
+        lines.append(f"- [{'/'.join(item['tags'])}] {zh_short(item['title'])}（{item['direction']}）")
     lines.append("")
 
     lines.append("一句话总结")
     lines.append(f"- {overall}")
-
     return "\n".join(lines)
 
 
+def select_window_items(items, start, end):
+    start_ts = start.timestamp()
+    end_ts = end.timestamp()
+    picked = [i for i in items if i.get("published_ts", 0) and start_ts <= i["published_ts"] <= end_ts]
+    return picked[:MAX_ITEMS]
+
+
 def main():
-    sent = load_sent()
-    items = collect_items(sent)
+    now = datetime.now()
+    window_key, start, end, title = current_window(now)
+    all_items = collect_all_items()
+    items = select_window_items(all_items, start, end)
+
+    if not items and window_key == "morning":
+        items = all_items[:MAX_ITEMS]
+    elif not items and window_key == "evening":
+        items = all_items[:MAX_ITEMS]
+
     if not items:
         print("pushed 0 new items")
         return
 
-    final_text = build_fixed_chinese_digest(items)
+    window_state = load_window_state()
+    state_key = f"{window_key}:{start.strftime('%Y%m%d%H%M')}-{end.strftime('%Y%m%d%H%M')}"
+    if window_state.get(window_key) == state_key:
+        print(f"already sent for {state_key}")
+        return
+
+    final_text = build_fixed_chinese_digest(items, title)
     send(final_text)
 
+    sent = load_sent()
     for item in items:
         sent.add(item["uid"])
     save_sent(sent)
-    print(f"pushed digest with {len(items)} items")
+
+    window_state[window_key] = state_key
+    save_window_state(window_state)
+    print(f"pushed digest with {len(items)} items for {state_key}")
 
 
 if __name__ == "__main__":
