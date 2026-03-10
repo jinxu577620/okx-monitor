@@ -1,0 +1,12 @@
+WATCHLIST = [
+    "BTC-USDT-SWAP",
+    "ETH-USDT-SWAP",
+]
+
+BAR_MAP = {
+    "4H": "4H",
+    "1D": "1D",
+}
+
+OKX_REST_BASE = "https://www.okx.com"
+KLINE_LIMIT = 100
