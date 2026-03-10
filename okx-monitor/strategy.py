@@ -162,6 +162,7 @@ def score_signal(trend: dict, market_extras: dict | None = None):
     funding = market_extras.get("fundingRate")
     oi_delta = market_extras.get("oi_delta_pct")
     flow_bias = market_extras.get("flow_bias")
+    vol_bias = market_extras.get("vol_bias")
 
     if funding is not None:
         if 0 < funding < 0.0008:
@@ -188,6 +189,13 @@ def score_signal(trend: dict, market_extras: dict | None = None):
     elif flow_bias == "outflow":
         score -= 0.5
         reasons.append("量价结构偏资金流出")
+
+    if vol_bias == "expansion":
+        score += 0.5
+        reasons.append("波动与成交量同步扩张")
+    elif vol_bias == "contraction":
+        score -= 0.5
+        reasons.append("波动不足，趋势延续性存疑")
 
     if score >= 3:
         signal = "偏多"
@@ -242,4 +250,5 @@ def build_trade_plan(candles, market_extras: dict | None = None):
         "oi": market_extras.get("oi") if market_extras else None,
         "oi_delta_pct": market_extras.get("oi_delta_pct") if market_extras else None,
         "flow_bias": market_extras.get("flow_bias") if market_extras else None,
+        "vol_bias": market_extras.get("vol_bias") if market_extras else None,
     }

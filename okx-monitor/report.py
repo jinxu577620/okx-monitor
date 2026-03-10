@@ -24,7 +24,7 @@ def build_symbol_report(inst_id: str, ticker: dict, trend_4h: dict, trend_1d: di
         f"- MACD：{fmt(plan_4h.get('macd'))}",
         f"- 资金费率：{fmt(plan_4h.get('fundingRate'))}",
         f"- OI：{fmt(plan_4h.get('oi'))} | OI变化：{fmt(plan_4h.get('oi_delta_pct'))}%",
-        f"- 资金流倾向：{plan_4h.get('flow_bias') or '-'}",
+        f"- 资金流倾向：{plan_4h.get('flow_bias') or '-'} | 波动量能：{plan_4h.get('vol_bias') or '-'}",
         f"- 综合信号：{plan_4h.get('signal')}（评分 {fmt(plan_4h.get('score'))}）",
         f"- 信号依据：{reasons}",
         f"- 支撑 / 压力：{fmt(plan_4h.get('support'))} / {fmt(plan_4h.get('resistance'))}",
