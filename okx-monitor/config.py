@@ -1,6 +1,7 @@
 WATCHLIST = [
     "BTC-USDT-SWAP",
     "ETH-USDT-SWAP",
+    "SOL-USDT-SWAP",
 ]
 
 BAR_MAP = {
