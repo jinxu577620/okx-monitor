@@ -3,6 +3,13 @@ from __future__ import annotations
 from statistics import mean, pstdev
 
 
+WEIGHTS = {
+    "1H": 0.30,
+    "4H": 0.30,
+    "1D": 0.40,
+}
+
+
 def sma(values, period: int):
     if len(values) < period:
         return None
@@ -226,6 +233,10 @@ def build_trade_plan(candles, market_extras: dict | None = None):
     short_trigger = round(support * 0.998, 2)
     stop_long = round(support * 0.995, 2)
     stop_short = round(resistance * 1.005, 2)
+    tp1_long = round(long_trigger + (long_trigger - stop_long) * 1.0, 2)
+    tp2_long = round(long_trigger + (long_trigger - stop_long) * 1.8, 2)
+    tp1_short = round(short_trigger - (stop_short - short_trigger) * 1.0, 2)
+    tp2_short = round(short_trigger - (stop_short - short_trigger) * 1.8, 2)
 
     if signal["signal"] == "强多":
         summary = "强势偏多，若放量突破可顺势跟随，但仍不建议裸追。"
@@ -243,6 +254,10 @@ def build_trade_plan(candles, market_extras: dict | None = None):
         "trigger_short": short_trigger,
         "stop_long": stop_long,
         "stop_short": stop_short,
+        "tp1_long": tp1_long,
+        "tp2_long": tp2_long,
+        "tp1_short": tp1_short,
+        "tp2_short": tp2_short,
         "support": round(support, 2),
         "resistance": round(resistance, 2),
         "summary": summary,
@@ -259,4 +274,39 @@ def build_trade_plan(candles, market_extras: dict | None = None):
         "oi_delta_pct": market_extras.get("oi_delta_pct") if market_extras else None,
         "flow_bias": market_extras.get("flow_bias") if market_extras else None,
         "vol_bias": market_extras.get("vol_bias") if market_extras else None,
+    }
+
+
+def signal_to_score(signal: str) -> float:
+    return {
+        "强多": 5,
+        "偏多": 3,
+        "观望": 0,
+        "偏空": -3,
+        "强空": -5,
+    }.get(signal, 0)
+
+
+def weighted_decision(plan_1h: dict, plan_4h: dict, plan_1d: dict):
+    weighted_score = (
+        signal_to_score(plan_1h.get("signal", "观望")) * WEIGHTS["1H"]
+        + signal_to_score(plan_4h.get("signal", "观望")) * WEIGHTS["4H"]
+        + signal_to_score(plan_1d.get("signal", "观望")) * WEIGHTS["1D"]
+    )
+
+    if weighted_score >= 3.5:
+        signal = "强多"
+    elif weighted_score >= 1.5:
+        signal = "偏多"
+    elif weighted_score <= -3.5:
+        signal = "强空"
+    elif weighted_score <= -1.5:
+        signal = "偏空"
+    else:
+        signal = "观望"
+
+    return {
+        "signal": signal,
+        "weighted_score": round(weighted_score, 2),
+        "weights": WEIGHTS,
     }

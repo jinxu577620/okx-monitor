@@ -9,13 +9,14 @@ def fmt(v):
     return str(v)
 
 
-def build_symbol_report(inst_id: str, ticker: dict, trend_1h: dict, trend_4h: dict, trend_1d: dict, plan_1h: dict, plan_4h: dict):
+def build_symbol_report(inst_id: str, ticker: dict, trend_1h: dict, trend_4h: dict, trend_1d: dict, plan_1h: dict, plan_4h: dict, plan_1d: dict, decision: dict):
     boll = plan_4h.get('boll') or {}
     reasons = '；'.join(plan_4h.get('reasons', [])) if plan_4h.get('reasons') else '-'
     lines = [
         f"{inst_id}",
         f"- 现价：{fmt(ticker.get('last'))}",
         f"- 24H 区间：{fmt(ticker.get('low24h'))} ~ {fmt(ticker.get('high24h'))}",
+        f"- 权重信号：{decision.get('signal')}（综合分 {fmt(decision.get('weighted_score'))}，1D/4H/1H=40/30/30）",
         f"- 1H 结构：{trend_1h.get('bias')} | 信号={plan_1h.get('signal')} | 多头触发={fmt(plan_1h.get('trigger_long'))} | 空头触发={fmt(plan_1h.get('trigger_short'))}",
         f"- 4H 结构：{trend_4h.get('bias')}（MA20={fmt(trend_4h.get('ma20'))} / MA60={fmt(trend_4h.get('ma60'))}）",
         f"- 1D 结构：{trend_1d.get('bias')}（MA20={fmt(trend_1d.get('ma20'))} / MA60={fmt(trend_1d.get('ma60'))}）",
@@ -29,10 +30,12 @@ def build_symbol_report(inst_id: str, ticker: dict, trend_1h: dict, trend_4h: di
         f"- 4H 综合信号：{plan_4h.get('signal')}（评分 {fmt(plan_4h.get('score'))}）",
         f"- 信号依据：{reasons}",
         f"- 4H 支撑 / 压力：{fmt(plan_4h.get('support'))} / {fmt(plan_4h.get('resistance'))}",
-        f"- 4H 多头触发：{fmt(plan_4h.get('trigger_long'))}",
-        f"- 4H 空头触发：{fmt(plan_4h.get('trigger_short'))}",
-        f"- 多头止损参考：{fmt(plan_4h.get('stop_long'))}",
-        f"- 空头止损参考：{fmt(plan_4h.get('stop_short'))}",
+        f"- 开多点：{fmt(plan_4h.get('trigger_long'))}",
+        f"- 多头止盈1 / 止盈2：{fmt(plan_4h.get('tp1_long'))} / {fmt(plan_4h.get('tp2_long'))}",
+        f"- 多头止损：{fmt(plan_4h.get('stop_long'))}",
+        f"- 开空点：{fmt(plan_4h.get('trigger_short'))}",
+        f"- 空头止盈1 / 止盈2：{fmt(plan_4h.get('tp1_short'))} / {fmt(plan_4h.get('tp2_short'))}",
+        f"- 空头止损：{fmt(plan_4h.get('stop_short'))}",
         f"- 结论：{plan_4h.get('summary', '-')}",
     ]
     return "\n".join(lines)

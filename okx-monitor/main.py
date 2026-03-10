@@ -6,7 +6,7 @@ from config import WATCHLIST, BAR_MAP
 from okx_public import OKXPublicClient
 from report import build_symbol_report, build_report
 from state import load_state, save_state, push_history
-from strategy import analyze_trend, build_trade_plan
+from strategy import analyze_trend, build_trade_plan, weighted_decision
 
 
 def calc_market_extras(client: OKXPublicClient, inst_id: str, ticker: dict, candles_4h: list[dict], state: dict):
@@ -100,8 +100,10 @@ def main():
         trend_1d = analyze_trend(candles_1d)
         plan_1h = build_trade_plan(candles_1h, market_extras)
         plan_4h = build_trade_plan(candles_4h, market_extras)
+        plan_1d = build_trade_plan(candles_1d, market_extras)
+        decision = weighted_decision(plan_1h, plan_4h, plan_1d)
 
-        reports.append(build_symbol_report(inst_id, ticker, trend_1h, trend_4h, trend_1d, plan_1h, plan_4h))
+        reports.append(build_symbol_report(inst_id, ticker, trend_1h, trend_4h, trend_1d, plan_1h, plan_4h, plan_1d, decision))
 
     save_state(state)
     print(build_report(reports))
