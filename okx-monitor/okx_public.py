@@ -54,3 +54,21 @@ class OKXPublicClient:
             "low24h": float(row.get("low24h", 0) or 0),
             "vol24h": float(row.get("vol24h", 0) or 0),
         }
+
+    def get_funding_rate(self, inst_id: str) -> Dict[str, Any]:
+        data = self._get("/api/v5/public/funding-rate", params={"instId": inst_id})
+        row = data.get("data", [{}])[0]
+        return {
+            "fundingRate": float(row.get("fundingRate", 0) or 0),
+            "nextFundingRate": float(row.get("nextFundingRate", 0) or 0),
+            "fundingTime": row.get("fundingTime"),
+        }
+
+    def get_open_interest(self, inst_id: str) -> Dict[str, Any]:
+        data = self._get("/api/v5/public/open-interest", params={"instId": inst_id})
+        row = data.get("data", [{}])[0]
+        return {
+            "oi": float(row.get("oi", 0) or 0),
+            "oiCcy": float(row.get("oiCcy", 0) or 0),
+            "ts": row.get("ts"),
+        }

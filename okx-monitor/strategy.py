@@ -94,9 +94,10 @@ def analyze_trend(candles):
     }
 
 
-def score_signal(trend: dict):
+def score_signal(trend: dict, market_extras: dict | None = None):
     score = 0
     reasons = []
+    market_extras = market_extras or {}
     last = trend.get("last")
     ma20 = trend.get("ma20")
     ma60 = trend.get("ma60")
@@ -158,6 +159,36 @@ def score_signal(trend: dict):
             score -= 1
             reasons.append("MACD 位于零轴下方")
 
+    funding = market_extras.get("fundingRate")
+    oi_delta = market_extras.get("oi_delta_pct")
+    flow_bias = market_extras.get("flow_bias")
+
+    if funding is not None:
+        if 0 < funding < 0.0008:
+            score += 0.5
+            reasons.append("资金费率温和为正")
+        elif funding > 0.003:
+            score -= 0.5
+            reasons.append("资金费率偏热，提防多头拥挤")
+        elif funding < -0.0008:
+            score += 0.5
+            reasons.append("资金费率偏负，留意反身性反弹")
+
+    if oi_delta is not None:
+        if oi_delta > 2:
+            score += 1 if (last is not None and ma20 is not None and last > ma20) else -0.5
+            reasons.append("OI 明显上升")
+        elif oi_delta < -2:
+            score -= 0.5
+            reasons.append("OI 回落，追价意愿不足")
+
+    if flow_bias == "inflow":
+        score += 0.5
+        reasons.append("量价结构偏资金流入")
+    elif flow_bias == "outflow":
+        score -= 0.5
+        reasons.append("量价结构偏资金流出")
+
     if score >= 3:
         signal = "偏多"
     elif score <= -3:
@@ -168,10 +199,10 @@ def score_signal(trend: dict):
     return {"score": round(score, 2), "signal": signal, "reasons": reasons[:4]}
 
 
-def build_trade_plan(candles):
+def build_trade_plan(candles, market_extras: dict | None = None):
     trend = analyze_trend(candles)
     levels = calc_levels(candles)
-    signal = score_signal(trend)
+    signal = score_signal(trend, market_extras)
     last = trend.get("last")
     support = levels.get("support")
     resistance = levels.get("resistance")
@@ -207,4 +238,8 @@ def build_trade_plan(candles):
         "avg_vol20": trend.get("avg_vol20"),
         "last_vol": trend.get("last_vol"),
         "macd": trend.get("macd"),
+        "fundingRate": market_extras.get("fundingRate") if market_extras else None,
+        "oi": market_extras.get("oi") if market_extras else None,
+        "oi_delta_pct": market_extras.get("oi_delta_pct") if market_extras else None,
+        "flow_bias": market_extras.get("flow_bias") if market_extras else None,
     }
