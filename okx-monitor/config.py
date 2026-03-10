@@ -5,6 +5,7 @@ WATCHLIST = [
 ]
 
 BAR_MAP = {
+    "1H": "1H",
     "4H": "4H",
     "1D": "1D",
 }

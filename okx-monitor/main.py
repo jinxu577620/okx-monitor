@@ -90,15 +90,18 @@ def main():
 
     for inst_id in WATCHLIST:
         ticker = client.get_ticker(inst_id)
+        candles_1h = client.get_candles(inst_id, BAR_MAP["1H"])
         candles_4h = client.get_candles(inst_id, BAR_MAP["4H"])
         candles_1d = client.get_candles(inst_id, BAR_MAP["1D"])
         market_extras = calc_market_extras(client, inst_id, ticker, candles_4h, state)
 
+        trend_1h = analyze_trend(candles_1h)
         trend_4h = analyze_trend(candles_4h)
         trend_1d = analyze_trend(candles_1d)
+        plan_1h = build_trade_plan(candles_1h, market_extras)
         plan_4h = build_trade_plan(candles_4h, market_extras)
 
-        reports.append(build_symbol_report(inst_id, ticker, trend_4h, trend_1d, plan_4h))
+        reports.append(build_symbol_report(inst_id, ticker, trend_1h, trend_4h, trend_1d, plan_1h, plan_4h))
 
     save_state(state)
     print(build_report(reports))
