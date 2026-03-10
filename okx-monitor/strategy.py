@@ -55,9 +55,24 @@ def build_trade_plan(candles):
     if not last or support is None or resistance is None:
         return {"trigger_long": None, "trigger_short": None, "stop": None}
 
+    long_trigger = round(resistance * 1.002, 2)
+    short_trigger = round(support * 0.998, 2)
+    stop_long = round(support * 0.995, 2)
+    stop_short = round(resistance * 1.005, 2)
+
+    if trend.get("bias") == "偏多":
+        summary = "日内偏多，优先等突破或回踩确认，不追高。"
+    elif trend.get("bias") == "偏空":
+        summary = "日内偏空，优先等反抽失败或支撑跌破，不抄底。"
+    else:
+        summary = "当前更像震荡，先等关键位突破后再动手。"
+
     return {
-        "trigger_long": round(resistance * 1.002, 2),
-        "trigger_short": round(support * 0.998, 2),
-        "stop_long": round(support * 0.995, 2),
-        "stop_short": round(resistance * 1.005, 2),
+        "trigger_long": long_trigger,
+        "trigger_short": short_trigger,
+        "stop_long": stop_long,
+        "stop_short": stop_short,
+        "support": round(support, 2),
+        "resistance": round(resistance, 2),
+        "summary": summary,
     }
