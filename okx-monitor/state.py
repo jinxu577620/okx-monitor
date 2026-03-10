@@ -18,3 +18,13 @@ def load_state() -> dict:
 
 def save_state(data: dict) -> None:
     STATE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def push_history(state: dict, inst_id: str, snapshot: dict, limit: int = 50) -> dict:
+    item = state.setdefault(inst_id, {})
+    history = item.setdefault("history", [])
+    history.append(snapshot)
+    if len(history) > limit:
+        del history[:-limit]
+    item.update(snapshot)
+    return state

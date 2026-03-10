@@ -5,7 +5,7 @@ from datetime import datetime
 from config import WATCHLIST, BAR_MAP
 from okx_public import OKXPublicClient
 from report import build_symbol_report, build_report
-from state import load_state, save_state
+from state import load_state, save_state, push_history
 from strategy import analyze_trend, build_trade_plan
 
 
@@ -17,6 +17,7 @@ def calc_market_extras(client: OKXPublicClient, inst_id: str, ticker: dict, cand
     prev_oi = prev.get("oi")
     prev_last = prev.get("last")
     prev_vol24h = prev.get("vol24h")
+    history = prev.get("history", [])
 
     oi = oi_now.get("oi")
     oi_delta_pct = None
@@ -52,12 +53,23 @@ def calc_market_extras(client: OKXPublicClient, inst_id: str, ticker: dict, cand
         elif recent_range < avg_range * 0.8 and recent_vol < avg_vol * 0.8:
             vol_bias = "contraction"
 
-    state[inst_id] = {
+    if history:
+        recent_oi = [x.get("oi") for x in history[-6:] if x.get("oi")]
+        if len(recent_oi) >= 2 and oi:
+            base_oi = recent_oi[0]
+            if base_oi:
+                try:
+                    oi_delta_pct = ((oi - base_oi) / base_oi) * 100
+                except ZeroDivisionError:
+                    pass
+
+    snapshot = {
         "last": ticker.get("last"),
         "vol24h": ticker.get("vol24h"),
         "oi": oi,
         "ts": datetime.now().isoformat(),
     }
+    push_history(state, inst_id, snapshot)
 
     return {
         "fundingRate": funding.get("fundingRate"),

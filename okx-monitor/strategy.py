@@ -197,14 +197,18 @@ def score_signal(trend: dict, market_extras: dict | None = None):
         score -= 0.5
         reasons.append("波动不足，趋势延续性存疑")
 
-    if score >= 3:
+    if score >= 4.5:
+        signal = "强多"
+    elif score >= 3:
         signal = "偏多"
+    elif score <= -4.5:
+        signal = "强空"
     elif score <= -3:
         signal = "偏空"
     else:
         signal = "观望"
 
-    return {"score": round(score, 2), "signal": signal, "reasons": reasons[:4]}
+    return {"score": round(score, 2), "signal": signal, "reasons": reasons[:5]}
 
 
 def build_trade_plan(candles, market_extras: dict | None = None):
@@ -223,8 +227,12 @@ def build_trade_plan(candles, market_extras: dict | None = None):
     stop_long = round(support * 0.995, 2)
     stop_short = round(resistance * 1.005, 2)
 
-    if signal["signal"] == "偏多":
+    if signal["signal"] == "强多":
+        summary = "强势偏多，若放量突破可顺势跟随，但仍不建议裸追。"
+    elif signal["signal"] == "偏多":
         summary = "多指标偏多，可优先等突破或回踩确认后做多。"
+    elif signal["signal"] == "强空":
+        summary = "强势偏空，优先等反抽承压后顺势做空，避免抢反弹。"
     elif signal["signal"] == "偏空":
         summary = "多指标偏空，优先等反抽失败或破位后做空。"
     else:
