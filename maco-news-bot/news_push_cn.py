@@ -36,6 +36,7 @@ session.mount("http://", HTTPAdapter(max_retries=retry))
 session.mount("https://", HTTPAdapter(max_retries=retry))
 
 TAG_RULES = [
+    ("特朗普", ["trump", "donald trump", "特朗普"]),
     ("A股", ["china", "pboc", "stimulus", "yuan", "credit", "property", "beijing", "shanghai", "shenzhen", "中概"]),
     ("美股", ["us stocks", "wall street", "nasdaq", "s&p", "dow", "fed", "treasury"]),
     ("黄金", ["gold", "bullion"]),
@@ -240,7 +241,9 @@ def build_fixed_chinese_digest(items, title):
         for tag in item["tags"]:
             grouped[tag].append(item)
 
-    top_items = items[:3]
+    trump_items = [item for item in items if "特朗普" in item["tags"]]
+    other_items = [item for item in items if "特朗普" not in item["tags"]]
+    top_items = (trump_items + other_items)[:3]
     quick_items = items[:5]
     total_score = sum(item["direction_score"] for item in items)
     if total_score >= 3:
@@ -257,6 +260,8 @@ def build_fixed_chinese_digest(items, title):
     lines.append("")
 
     lines.append("市场影响")
+    if grouped.get('特朗普'):
+        lines.append("- 特朗普：相关表态已触发优先关注，注意对美股、美元、黄金与加密情绪的扰动。")
     lines.append(f"- A股：{summarize_tag(grouped, 'A股')}")
     lines.append(f"- 美股：{summarize_tag(grouped, '美股')}")
     lines.append(f"- 黄金：{summarize_tag(grouped, '黄金')}")
