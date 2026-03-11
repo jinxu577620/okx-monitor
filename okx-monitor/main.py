@@ -5,6 +5,7 @@ from datetime import datetime
 from config import WATCHLIST, BAR_MAP
 from okx_public import OKXPublicClient
 from report import build_symbol_report, build_report
+from delta_report import build_delta_report
 from state import load_state, save_state, push_history
 from strategy import analyze_trend, build_trade_plan, weighted_decision
 
@@ -83,9 +84,10 @@ def calc_market_extras(client: OKXPublicClient, inst_id: str, ticker: dict, cand
     }
 
 
-def main():
+def collect_payloads():
     client = OKXPublicClient()
     reports = []
+    payloads = []
     state = load_state()
 
     for inst_id in WATCHLIST:
@@ -104,9 +106,28 @@ def main():
         decision = weighted_decision(plan_1h, plan_4h, plan_1d)
 
         reports.append(build_symbol_report(inst_id, ticker, trend_1h, trend_4h, trend_1d, plan_1h, plan_4h, plan_1d, decision))
+        payloads.append({
+            "inst_id": inst_id,
+            "ticker": ticker,
+            "plan_1h": plan_1h,
+            "plan_4h": plan_4h,
+            "plan_1d": plan_1d,
+            "decision": decision,
+            "state": state.get(inst_id, {}),
+        })
 
     save_state(state)
+    return reports, payloads
+
+
+def main():
+    reports, _payloads = collect_payloads()
     print(build_report(reports))
+
+
+def morning_main():
+    _reports, payloads = collect_payloads()
+    print(build_delta_report(payloads))
 
 
 if __name__ == "__main__":
