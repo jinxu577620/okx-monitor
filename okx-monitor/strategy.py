@@ -229,6 +229,7 @@ def build_trade_plan(candles, market_extras: dict | None = None):
     if not last or support is None or resistance is None:
         return {"trigger_long": None, "trigger_short": None, "stop": None}
 
+    # 方案A：突破/破位确认（偏顺势）
     long_trigger = round(resistance * 1.002, 2)
     short_trigger = round(support * 0.998, 2)
     stop_long = round(support * 0.995, 2)
@@ -237,6 +238,17 @@ def build_trade_plan(candles, market_extras: dict | None = None):
     tp2_long = round(long_trigger + (long_trigger - stop_long) * 1.8, 2)
     tp1_short = round(short_trigger - (stop_short - short_trigger) * 1.0, 2)
     tp2_short = round(short_trigger - (stop_short - short_trigger) * 1.8, 2)
+
+    # 方案B：回踩/反抽（偏性价比）
+    pullback_long_entry = round(support * 1.003, 2)
+    pullback_long_stop = round(support * 0.994, 2)
+    pullback_long_tp1 = round(resistance * 0.998, 2)
+    pullback_long_tp2 = round(resistance * 1.01, 2)
+
+    rebound_short_entry = round(resistance * 0.997, 2)
+    rebound_short_stop = round(resistance * 1.006, 2)
+    rebound_short_tp1 = round(support * 1.002, 2)
+    rebound_short_tp2 = round(support * 0.99, 2)
 
     if signal["signal"] == "强多":
         summary = "强势偏多，若放量突破可顺势跟随，但仍不建议裸追。"
@@ -258,6 +270,14 @@ def build_trade_plan(candles, market_extras: dict | None = None):
         "tp2_long": tp2_long,
         "tp1_short": tp1_short,
         "tp2_short": tp2_short,
+        "pullback_long_entry": pullback_long_entry,
+        "pullback_long_stop": pullback_long_stop,
+        "pullback_long_tp1": pullback_long_tp1,
+        "pullback_long_tp2": pullback_long_tp2,
+        "rebound_short_entry": rebound_short_entry,
+        "rebound_short_stop": rebound_short_stop,
+        "rebound_short_tp1": rebound_short_tp1,
+        "rebound_short_tp2": rebound_short_tp2,
         "support": round(support, 2),
         "resistance": round(resistance, 2),
         "summary": summary,

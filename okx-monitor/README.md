@@ -26,7 +26,7 @@
 4. 小仓位实盘
 
 ## 现在可直接使用的脚本
-- `python3 live_card.py`：输出实时策略卡片
+- `python3 live_card.py`：输出实时策略卡片（含突破 / 回踩双方案）
 - `python3 push_live_card.py`：把实时策略卡片推送到 Telegram
 - `python3 check_alerts.py`：检查是否接近/触发关键位
 - `python3 push_alerts.py`：只有出现关键信号时才推送到 Telegram
