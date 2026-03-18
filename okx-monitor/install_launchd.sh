@@ -14,4 +14,4 @@ launchctl enable gui/$(id -u)/$LABEL
 
 launchctl print gui/$(id -u)/$LABEL | head -n 30 || true
 
-echo "Done. Live crypto card will push every 30 minutes."
+echo "Done. Live crypto card will push every 1 hour."

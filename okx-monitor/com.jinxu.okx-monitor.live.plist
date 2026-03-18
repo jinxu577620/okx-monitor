@@ -13,7 +13,7 @@
   </array>
 
   <key>StartInterval</key>
-  <integer>1800</integer>
+  <integer>3600</integer>
 
   <key>WorkingDirectory</key>
   <string>/Users/jinxu/.openclaw/workspace】/okx-monitor</string>

@@ -33,7 +33,7 @@
 当前提供 `launchd` 方案：
 - 配置文件：`com.jinxu.okx-monitor.live.plist`
 - 安装脚本：`install_launchd.sh`
-- 默认频率：每 30 分钟推送一次
+- 默认频率：每 1 小时推送一次
 - 默认复用：`/Users/jinxu/.openclaw/workspace】/maco-news-bot/.env` 中的 `TG_BOT_TOKEN` 与 `TG_CHAT_ID`
 
 安装：
