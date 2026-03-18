@@ -24,3 +24,21 @@
 2. 只读账户监控
 3. 模拟盘
 4. 小仓位实盘
+
+## 现在可直接使用的脚本
+- `python3 live_card.py`：输出实时策略卡片
+- `python3 push_live_card.py`：把实时策略卡片推送到 Telegram
+
+## 自动推送
+当前提供 `launchd` 方案：
+- 配置文件：`com.jinxu.okx-monitor.live.plist`
+- 安装脚本：`install_launchd.sh`
+- 默认频率：每 30 分钟推送一次
+- 默认复用：`/Users/jinxu/.openclaw/workspace】/maco-news-bot/.env` 中的 `TG_BOT_TOKEN` 与 `TG_CHAT_ID`
+
+安装：
+```bash
+cd /Users/jinxu/.openclaw/workspace】/okx-monitor
+chmod +x install_launchd.sh
+./install_launchd.sh
+```
