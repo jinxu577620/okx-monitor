@@ -19,6 +19,7 @@ TRACKING_TTL_H = 24  # 24小时后清理
 TRACKING_CHG_THRESHOLD = 3.0  # 涨跌幅阈值 (%)
 EARLY_BIRD_MIN_SCORE = 8  # 早鸟预警最低评分
 EARLY_BIRD_MAX_CHG = 8.0  # 早鸟预警最大24h涨幅 (%)
+BREAKOUT_MIN_CHG = 15.0  # 强势突破最小24h涨幅 (%)
 
 
 # ====== 往期追踪状态管理 ======
@@ -162,6 +163,47 @@ def render_early_bird_section(birds: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def pick_breakout_surges(resurging: list[dict], steady: list[dict]) -> list[dict]:
+    """从卷土重来+稳健上涨中筛出强势突破币种（涨幅大且评分高）"""
+    candidates = []
+    for row in resurging:
+        chg = abs(row.get("chg24h", 0))
+        score = max(row.get("reSurgeScore", 0), row.get("scoreAccumulating", 0))
+        if chg >= BREAKOUT_MIN_CHG and score >= EARLY_BIRD_MIN_SCORE:
+            candidates.append({
+                "name": row["instId"].replace("-USDT-SWAP", ""),
+                "price": row.get("last", 0),
+                "chg24h": row.get("chg24h", 0),
+                "score": score,
+                "type": "卷土重来",
+            })
+    for row in steady:
+        chg = abs(row.get("chg24h", 0))
+        if chg >= BREAKOUT_MIN_CHG and row.get("steadyScore", 0) >= EARLY_BIRD_MIN_SCORE:
+            candidates.append({
+                "name": row["instId"].replace("-USDT-SWAP", ""),
+                "price": row.get("last", 0),
+                "chg24h": row.get("chg24h", 0),
+                "score": row.get("steadyScore", 0),
+                "type": "稳健上涨",
+            })
+    candidates.sort(key=lambda x: abs(x["chg24h"]), reverse=True)
+    return candidates[:3]
+
+
+def render_breakout_section(surges: list[dict]) -> str:
+    if not surges:
+        return ""
+    lines = ["🚨 强势突破（🔥正在拉盘）", ""]
+    for s in surges:
+        lines.append(
+            f"  🚀 {s['name']:6s}  \${_fmt(s['price']):10s}  "
+            f"{s['chg24h']:+.1f}%  评分{s['score']:.0f}  {s['type']}"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def render_tracking_section(alerts: list[dict]) -> str:
     """渲染往期追踪区块"""
     if not alerts:
@@ -288,6 +330,10 @@ def main() -> None:
     current_coins = collect_current_coins(accumulating, pre_breakouts, resurging, steady, watch_list, [])
     current_ids = set(current_coins.keys())
 
+    # 强势突破：涨幅大 + 评分高的币种
+    surges = pick_breakout_surges(resurging, steady)
+    breakout_section = render_breakout_section(surges)
+
     # 早鸟预警：底部高分信号
     early_birds = pick_early_birds(accumulating, pre_breakouts)
     early_bird_section = render_early_bird_section(early_birds)
@@ -305,6 +351,8 @@ def main() -> None:
 
     header = f"{title}\n更新时间：{scan_time}\n"
     parts = []
+    if breakout_section:
+        parts.append(breakout_section)
     if early_bird_section:
         parts.append(early_bird_section)
     if tracking_section:
