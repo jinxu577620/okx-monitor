@@ -144,7 +144,14 @@ def pick_early_birds(accumulating: list[dict], pre_breakouts: list[dict]) -> lis
                 "type": "突破",
             })
     candidates.sort(key=lambda x: x["score"], reverse=True)
-    return candidates[:3]
+    # 按名称去重
+    seen_names: set[str] = set()
+    unique: list[dict] = []
+    for c in candidates:
+        if c["name"] not in seen_names:
+            seen_names.add(c["name"])
+            unique.append(c)
+    return unique[:3]
 
 
 def render_early_bird_section(birds: list[dict]) -> str:
@@ -188,7 +195,13 @@ def pick_breakout_surges(resurging: list[dict], steady: list[dict]) -> list[dict
                 "type": "稳健上涨",
             })
     candidates.sort(key=lambda x: abs(x["chg24h"]), reverse=True)
-    return candidates[:3]
+    seen_names: set[str] = set()
+    unique: list[dict] = []
+    for c in candidates:
+        if c["name"] not in seen_names:
+            seen_names.add(c["name"])
+            unique.append(c)
+    return unique[:3]
 
 
 def render_breakout_section(surges: list[dict]) -> str:
