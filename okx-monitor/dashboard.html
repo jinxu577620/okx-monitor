@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OKX Monitor — 脚本管理面板</title>
+<style>
+  :root {
+    --bg: #0f1117; --card: #1a1d27; --border: #2a2d3a;
+    --text: #cdd6f4; --muted: #6c7086; --accent: #89b4fa;
+    --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af;
+    --blue: #89b4fa; --purple: #cba6f7;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family: -apple-system, Menlo, monospace; padding:24px; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  .subtitle { color:var(--muted); font-size:13px; margin-bottom:20px; }
+
+  .stats { display:flex; gap:16px; margin-bottom:24px; }
+  .stat { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:16px 20px; flex:1; }
+  .stat .num { font-size:28px; font-weight:700; }
+  .stat .label { font-size:12px; color:var(--muted); margin-top:4px; }
+  .stat.running .num { color:var(--green); }
+  .stat.stopped .num { color:var(--muted); }
+  .stat.error .num { color:var(--red); }
+  .stat.msgs .num { color:var(--purple); }
+
+  .toolbar { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .toolbar button { background:var(--card); border:1px solid var(--border); color:var(--text); padding:6px 14px; border-radius:6px; cursor:pointer; font-size:12px; }
+  .toolbar button:hover { border-color:var(--accent); }
+  .toolbar button.active { background:var(--accent); color:var(--bg); border-color:var(--accent); }
+
+  /* === LAYOUT === */
+  .main-layout { display:flex; gap:16px; }
+  .left-panel { flex:1; min-width:0; }
+  .right-panel { width:480px; flex-shrink:0; position:sticky; top:24px; align-self:flex-start; }
+
+  /* === TABLE === */
+  table { width:100%; border-collapse:collapse; background:var(--card); border-radius:8px; overflow:hidden; border:1px solid var(--border); }
+  th { text-align:left; padding:10px 14px; font-size:11px; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--border); background:#14161e; }
+  td { padding:8px 14px; font-size:13px; border-bottom:1px solid var(--border); }
+  tr:last-child td { border-bottom:none; }
+  tr:hover { background:rgba(137,180,250,0.03); }
+  tr.selected { background:rgba(137,180,250,0.08); }
+  tr.highlight { background:rgba(249,226,175,0.05); }
+
+  .status { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+  .status.ok { background:var(--green); }
+  .status.err { background:var(--red); }
+  .status.run { background:var(--blue); animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+  .badge { font-size:10px; padding:2px 7px; border-radius:10px; }
+  .badge.wx { background:rgba(137,180,250,0.15); color:var(--blue); }
+  .badge.dd { background:rgba(166,227,161,0.15); color:var(--green); }
+  .schedule { font-size:11px; color:var(--muted); }
+
+  .actions { display:flex; gap:4px; flex-wrap:wrap; }
+  .actions button { font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer; border:1px solid transparent; }
+  .btn-msg { background:rgba(203,166,247,0.1); color:var(--purple); border-color:rgba(203,166,247,0.3); }
+  .btn-log { background:rgba(137,180,250,0.1); color:var(--blue); border-color:rgba(137,180,250,0.3); }
+  .btn-off { background:rgba(243,139,168,0.1); color:var(--red); border-color:rgba(243,139,168,0.3); }
+  .actions button:hover { opacity:0.8; }
+
+  /* === PREVIEW PANEL === */
+  .preview-placeholder { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:40px 24px; text-align:center; color:var(--muted); font-size:13px; line-height:1.8; }
+  .preview-card { background:var(--card); border:1px solid var(--border); border-radius:8px; overflow:hidden; display:none; }
+  .preview-card.open { display:block; }
+  .preview-head { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--border); background:#14161e; }
+  .preview-head .title { font-size:13px; font-weight:600; }
+  .preview-head .meta { font-size:11px; color:var(--muted); }
+  .preview-body { padding:16px; max-height:65vh; overflow-y:auto; }
+  .no-msg { padding:16px; color:var(--muted); font-size:12px; text-align:center; }
+
+  /* === MESSAGE BUBBLE === */
+  .msg-bubble {
+    background: rgba(137,180,250,0.06); border:1px solid rgba(137,180,250,0.15);
+    border-radius:8px; padding:14px 16px; font-size:12px; line-height:1.8;
+    white-space:pre-wrap; word-break:break-all; color:var(--text);
+  }
+  .msg-bubble.dingtalk {
+    background: rgba(166,227,161,0.06); border-color:rgba(166,227,161,0.15);
+  }
+  .msg-info { font-size:10px; color:var(--muted); margin-bottom:8px; display:flex; gap:12px; }
+  .msg-info span { background:var(--border); padding:2px 6px; border-radius:3px; }
+  .msg-timestamp { font-size:10px; color:var(--muted); text-align:right; margin-top:8px; }
+
+  /* === MODALS === */
+  .log-modal { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); z-index:100; }
+  .log-modal.open { display:flex; align-items:center; justify-content:center; }
+  .log-box { background:var(--card); border:1px solid var(--border); border-radius:12px; width:80%; max-width:800px; max-height:80vh; display:flex; flex-direction:column; }
+  .log-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border); }
+  .log-header h3 { font-size:15px; }
+  .log-header button { background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; }
+  .log-content { padding:16px 20px; overflow-y:auto; flex:1; font-size:12px; white-space:pre-wrap; color:var(--muted); }
+
+  .notes { margin-top:16px; padding:14px 16px; background:var(--card); border:1px solid var(--border); border-radius:8px; font-size:12px; color:var(--muted); line-height:1.6; }
+  .notes strong { color:var(--text); }
+
+  /* clickable row */
+  tr.clickable { cursor:pointer; }
+</style>
+</head>
+<body>
+
+<h1>OKX Monitor 脚本管理面板</h1>
+<p class="subtitle">项目：~/.openclaw/workspace/okx-monitor &nbsp;|&nbsp; 共 <span id="total">9</span> 个服务 &nbsp;|&nbsp; <span id="msg-count">-</span> 个有推送缓存</p>
+
+<div class="stats">
+  <div class="stat running"><div class="num" id="cnt-running">-</div><div class="label">运行中</div></div>
+  <div class="stat stopped"><div class="num" id="cnt-sleep">-</div><div class="label">就绪 (等待触发)</div></div>
+  <div class="stat error"><div class="num" id="cnt-err">-</div><div class="label">异常</div></div>
+  <div class="stat msgs"><div class="num" id="cnt-msgs">-</div><div class="label">有推送数据</div></div>
+</div>
+
+<div class="toolbar">
+  <button onclick="filterAll()" class="active" id="f-all">全部</button>
+  <button onclick="filterChannel('weixin')" id="f-wx">微信推送</button>
+  <button onclick="filterChannel('dingtalk')" id="f-dd">钉钉推送</button>
+  <button onclick="filterFreq('high')" id="f-hi">高频 (&le;5min)</button>
+  <button onclick="filterFreq('low')" id="f-lo">低频 (&gt;5min)</button>
+  <span style="flex:1"></span>
+  <button onclick="refreshAll()" style="background:var(--accent);color:var(--bg);">刷新全部</button>
+</div>
+
+<div class="main-layout">
+  <div class="left-panel">
+    <table>
+    <thead>
+    <tr>
+      <th>脚本</th>
+      <th>调度</th>
+      <th>推送</th>
+      <th>内容</th>
+      <th>状态</th>
+      <th>操作</th>
+    </tr>
+    </thead>
+    <tbody id="table-body"></tbody>
+    </table>
+    <div class="notes">
+      <strong>操作：</strong>点击行或「内容」查看推送；点击「日志」查看运行日志；点击「关闭」复制 launchctl 命令<br>
+      <strong>状态说明：</strong>🟢运行中 = 正在执行 &nbsp; ⚪就绪 = 已加载，等待下次调度触发 &nbsp; 🔴异常 = 上次执行失败
+    </div>
+  </div>
+
+  <div class="right-panel" id="preview-panel">
+    <div class="preview-placeholder" id="preview-empty">
+      👈 点击左侧表格行查看推送内容<br>
+      <span style="font-size:11px;">推送内容在下一次脚本运行时才会被缓存</span>
+    </div>
+    <div class="preview-card" id="preview-card">
+      <div class="preview-head">
+        <span class="title" id="pv-title">--</span>
+        <span class="meta" id="pv-meta">--</span>
+      </div>
+      <div class="preview-body" id="pv-body"></div>
+    </div>
+  </div>
+</div>
+
+<div class="log-modal" id="log-modal" onclick="if(event.target===this)closeLog()">
+  <div class="log-box">
+    <div class="log-header">
+      <h3 id="log-title">日志</h3>
+      <button onclick="closeLog()">&times;</button>
+    </div>
+    <div class="log-content" id="log-content">加载中...</div>
+  </div>
+</div>
+
+<script>
+// ===== DATA =====
+const services = [
+  { label:"alerts", script:"push_alerts.py", schedule:"每15分钟", channel:"weixin", ch_label:"微信", target:"wechat", timeout:"60s", desc:"通用告警推送" },
+  { label:"breakout-alerts", script:"push_breakout_alerts.py", schedule:"每5分钟", channel:"both", ch_label:"微信+钉钉", target:"wechat+dingtalk", timeout:"300s", desc:"突破预警推送 (蓄力信号) → 双推" },
+
+  { label:"daily-surge-report", script:"daily_surge_report.py", schedule:"每天23:30", channel:"weixin", ch_label:"微信", target:"wechat", timeout:"-", desc:"每日涨幅报告" },
+
+  { label:"flow-daily", script:"push_flow_daily.py", schedule:"每天09:00", channel:"weixin", ch_label:"微信", target:"wechat", timeout:"60s", desc:"每日资金流向" },
+  { label:"funding-snapshot", script:"funding_snapshot.py", schedule:"每2小时", channel:"weixin", ch_label:"微信", target:"wechat", timeout:"300s", desc:"资金面简报 (OI/费率)" },
+  { label:"hourly-breakout-summary", script:"hourly_breakout_summary.py", schedule:"每1小时", channel:"weixin", ch_label:"微信", target:"wechat", timeout:"120s", desc:"小时突破汇总" },
+  { label:"live", script:"push_live_card.py", schedule:"每2小时", channel:"weixin", ch_label:"微信", target:"wechat", timeout:"60s", desc:"实时行情卡片" },
+  { label:"major-push", script:"major_push.py", schedule:"每5分钟", channel:"weixin", ch_label:"微信", target:"wechat", timeout:"-", desc:"主流币推送" },
+
+
+  { label:"surge-alerts", script:"surge_alerts.py", schedule:"每5分钟", channel:"weixin", ch_label:"微信", target:"wechat", timeout:"120s", desc:"异动告警" },
+];
+
+const LOG_DIR = '/Users/jinxu/.openclaw/workspace】/okx-monitor';
+const PLIST_DIR = '/Users/jinxu/Library/LaunchAgents';
+
+let statusMap = {};
+let messagesMap = {};
+let currentFilter = 'all';
+let selectedLabel = null;
+
+// ===== FETCH =====
+async function refreshAll() {
+  const btn = document.querySelector('.toolbar button:last-child');
+  btn.textContent = '刷新中...'; btn.disabled = true;
+  try {
+    const [sr, mr] = await Promise.all([
+      fetch('/api/status?' + Date.now()),
+      fetch('/api/messages?' + Date.now())
+    ]);
+    if (sr.ok) statusMap = await sr.json();
+    if (mr.ok) messagesMap = await mr.json();
+  } catch(e) {}
+  btn.textContent = '刷新全部'; btn.disabled = false;
+  render();
+}
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/api/status?' + Date.now());
+    if (r.ok) statusMap = await r.json();
+  } catch(e) {}
+  render();
+}
+
+function getStatus(label) {
+  const s = statusMap[label];
+  if (!s) return 'sleep';
+  if (s.exit !== 0) return 'error';
+  if (s.pid > 0) return 'running';
+  return 'sleep';
+}
+
+// ===== RENDER =====
+function render() {
+  let rows = services;
+  if (currentFilter === 'weixin') rows = rows.filter(s => s.channel === 'weixin' || s.channel === 'both');
+  if (currentFilter === 'dingtalk') rows = rows.filter(s => s.channel === 'dingtalk' || s.channel === 'both');
+  if (currentFilter === 'high') rows = rows.filter(s => s.schedule.includes('每5') || s.schedule.includes('每10'));
+  if (currentFilter === 'low') rows = rows.filter(s => !s.schedule.includes('每5') && !s.schedule.includes('每10'));
+
+  let running=0, sleep=0, err=0, msgs=0;
+  rows.forEach(s => {
+    const st = getStatus(s.label);
+    if (st === 'running') running++;
+    else if (st === 'error') err++;
+    else sleep++;
+  });
+  Object.values(messagesMap).forEach(m => { if (m && m.message) msgs++; });
+
+  document.getElementById('cnt-running').textContent = running;
+  document.getElementById('cnt-sleep').textContent = sleep;
+  document.getElementById('cnt-err').textContent = err;
+  document.getElementById('cnt-msgs').textContent = msgs;
+  document.getElementById('msg-count').textContent = msgs + '个有缓存';
+
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = rows.map(s => {
+    const st = getStatus(s.label);
+    const statusIcon = st === 'running' ? '<span class="status run"></span>运行中'
+      : st === 'error' ? '<span class="status err"></span>异常'
+      : '<span class="status ok"></span>就绪';
+    const chBadge = s.channel === 'dingtalk' ? '<span class="badge dd">钉钉</span>'
+      : s.channel === 'both' ? '<span class="badge wx">微信</span> <span class="badge dd">钉钉</span>'
+      : '<span class="badge wx">' + s.ch_label + '</span>';
+    const rowClass = s.desc.includes('⚠️') ? 'highlight' : '';
+    const hasMsg = messagesMap[s.label] && messagesMap[s.label].message;
+    const msgPreview = hasMsg
+      ? messagesMap[s.label].message.replace(/\n/g,' ').substring(0, 50) + '...'
+      : '暂无';
+    const plistName = 'com.jinxu.okx-monitor.' + s.label + '.plist';
+    const selClass = (selectedLabel === s.label) ? ' selected' : '';
+
+    return `<tr class="clickable${rowClass}${selClass}" onclick="selectService('${s.label}')">
+      <td>
+        <div style="font-weight:600">${s.script}</div>
+        <div style="font-size:11px;color:var(--muted)">${s.desc}</div>
+      </td>
+      <td><span class="schedule">${s.schedule}</span></td>
+      <td>${chBadge}</td>
+      <td style="font-size:11px;color:${hasMsg?'var(--text)':'var(--muted)'};max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${hasMsg ? messagesMap[s.label].message.replace(/"/g,'&quot;') : ''}">${msgPreview}</td>
+      <td>${statusIcon}</td>
+      <td>
+        <div class="actions" onclick="event.stopPropagation()">
+          <button class="btn-msg" onclick="selectService('${s.label}')">内容</button>
+          <button class="btn-log" onclick="viewLog('${s.label}')">日志</button>
+          <button class="btn-off" onclick="copyCmd('unload','${plistName}')">关闭</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // Re-select if previously selected
+  if (selectedLabel) showPreview(selectedLabel);
+}
+
+// ===== PREVIEW =====
+function selectService(label) {
+  selectedLabel = label;
+  render();
+  showPreview(label);
+}
+
+function showPreview(label) {
+  const card = document.getElementById('preview-card');
+  const empty = document.getElementById('preview-empty');
+  const title = document.getElementById('pv-title');
+  const meta = document.getElementById('pv-meta');
+  const body = document.getElementById('pv-body');
+
+  const s = services.find(x => x.label === label);
+  if (!s) return;
+
+  const msg = messagesMap[label];
+  if (!msg || !msg.message) {
+    empty.style.display = 'block';
+    card.classList.remove('open');
+    return;
+  }
+
+  empty.style.display = 'none';
+  card.classList.add('open');
+  title.textContent = s.script + ' → ' + s.ch_label;
+
+  const timeStr = msg.time || '未知时间';
+  const lenStr = msg.length ? (msg.length < 1000 ? msg.length + '字符' : (msg.length/1000).toFixed(1)+'k字符') : '';
+  meta.textContent = timeStr + ' | ' + lenStr;
+
+  const isDing = s.channel === 'dingtalk';
+  const isBoth = s.channel === 'both';
+  const bubbleClass = isDing ? 'msg-bubble dingtalk' : 'msg-bubble';
+  const chIcon = isDing ? '📌 钉钉群' : isBoth ? '💬 微信 + 📌 钉钉' : '💬 微信消息';
+
+  body.innerHTML = `
+    <div class="msg-info">
+      <span>${chIcon}</span>
+      <span>${s.ch_label}</span>
+      ${s.target ? '<span>'+s.target+'</span>' : ''}
+    </div>
+    <div class="${bubbleClass}">${escapeHtml(msg.message)}</div>
+    <div class="msg-timestamp">推送时间: ${timeStr}</div>
+  `;
+}
+
+// ===== FILTERS =====
+function filterAll() { setFilter('all'); }
+function filterChannel(ch) { setFilter(ch); }
+function filterFreq(f) { setFilter(f); }
+function setFilter(f) {
+  currentFilter = f;
+  document.querySelectorAll('.toolbar button').forEach(b => b.classList.remove('active'));
+  const el = document.getElementById('f-' + (f==='weixin'?'wx':f==='dingtalk'?'dd':f==='all'?'all':f==='high'?'hi':'lo'));
+  if (el) el.classList.add('active');
+  render();
+}
+
+// ===== LOG VIEWER =====
+async function viewLog(label) {
+  const modal = document.getElementById('log-modal');
+  const title = document.getElementById('log-title');
+  const content = document.getElementById('log-content');
+  modal.classList.add('open');
+  title.textContent = label + ' — 最近日志';
+  content.textContent = '加载中...';
+  try {
+    const resp = await fetch('/api/log/' + label);
+    if (resp.ok) {
+      content.innerHTML = '<pre>' + escapeHtml(await resp.text()) + '</pre>';
+    } else {
+      content.textContent = '无法读取日志';
+    }
+  } catch(e) {
+    content.textContent = '无法连接 — 终端执行: tail -50 ' + LOG_DIR + '/' + label + '.log';
+  }
+}
+
+function closeLog() { document.getElementById('log-modal').classList.remove('open'); }
+
+// ===== COMMANDS =====
+function copyCmd(action, plistName) {
+  const cmd = 'launchctl ' + action + ' "' + PLIST_DIR + '/' + plistName + '"';
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(cmd).then(() => {
+      alert('已复制命令:\n\n' + cmd);
+    });
+  } else {
+    prompt('复制命令执行:', cmd);
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== INIT =====
+refreshAll();
+// Auto-refresh every 60s
+setInterval(refreshAll, 30000);
+</script>
+</body>
+</html>
