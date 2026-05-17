@@ -661,11 +661,16 @@ def _build_reason(sig_type: str, chg: float, fr: float, spread: float, bid_vol: 
 def render_signals(accumulating: list[dict], pre_breakouts: list[dict], resurging: list[dict], steady: list[dict], watch_list: list[dict] | None = None) -> str:
     lines = ["📈 蓄力预警", ""]
     had_any = False
+    seen: set[str] = set()  # 跨分类去重
 
     for row in resurging:
         if abs(row['chg24h']) >= MAX_CHG_RESURGE:
             continue
-        name = row['instId'].replace('-USDT-SWAP','')
+        iid = row['instId']
+        if iid in seen:
+            continue
+        seen.add(iid)
+        name = iid.replace('-USDT-SWAP','')
         lines.append(_fmt_entry_line(name, row['last'], row['chg24h'], "卷土重来"))
         lines.append("")
         had_any = True
@@ -673,7 +678,11 @@ def render_signals(accumulating: list[dict], pre_breakouts: list[dict], resurgin
     for row in steady:
         if abs(row['chg24h']) >= MAX_CHG_KEEP:
             continue
-        name = row['instId'].replace('-USDT-SWAP','')
+        iid = row['instId']
+        if iid in seen:
+            continue
+        seen.add(iid)
+        name = iid.replace('-USDT-SWAP','')
         lines.append(_fmt_entry_line(name, row['last'], row['chg24h'], "稳健上涨"))
         lines.append("")
         had_any = True
@@ -681,7 +690,11 @@ def render_signals(accumulating: list[dict], pre_breakouts: list[dict], resurgin
     for row in pre_breakouts:
         if abs(row['chg24h']) >= MAX_CHG_RESURGE:
             continue
-        name = row['instId'].replace('-USDT-SWAP','')
+        iid = row['instId']
+        if iid in seen:
+            continue
+        seen.add(iid)
+        name = iid.replace('-USDT-SWAP','')
         lines.append(_fmt_entry_line(name, row['last'], row['chg24h'], "突破在即"))
         lines.append("")
         had_any = True
@@ -689,7 +702,11 @@ def render_signals(accumulating: list[dict], pre_breakouts: list[dict], resurgin
     for row in accumulating:
         if abs(row['chg24h']) >= MAX_CHG_KEEP:
             continue
-        name = row['instId'].replace('-USDT-SWAP','')
+        iid = row['instId']
+        if iid in seen:
+            continue
+        seen.add(iid)
+        name = iid.replace('-USDT-SWAP','')
         # 蓄力中还没动，保守点，只给观察提示不带止盈
         lines.append(f"💤 {name}  ${fmt_price(row['last'])}  +{row['chg24h']:.2f}%  蓄力中（待突破确认）")
         lines.append("")
@@ -697,21 +714,29 @@ def render_signals(accumulating: list[dict], pre_breakouts: list[dict], resurgin
 
     # 观察清单：评分高但被涨幅过滤的（已起爆，等回调）
     if watch_list:
-        lines.append("📌 观察清单（高分等回调）")
-        lines.append("")
+        watch_items = []
         for row in watch_list:
-            name = row['instId'].replace('-USDT-SWAP','')
-            chg = row['chg24h']
-            all_scores = {
-                '蓄力': row.get('scoreAccumulating', 0),
-                '突破': row.get('scorePreBreakout', 0),
-                '卷土': row.get('reSurgeScore', 0),
-                '稳健': row.get('steadyScore', 0),
-            }
-            best_label = max(all_scores, key=all_scores.get)
-            best_score = all_scores[best_label]
-            lines.append(f"  {name}  ${fmt_price(row['last'])}  +{chg:.2f}%  {best_label}{best_score:.0f}分  ⏳等回调")
-            had_any = True
+            iid = row['instId']
+            if iid in seen:
+                continue
+            seen.add(iid)
+            watch_items.append(row)
+        if watch_items:
+            lines.append("📌 观察清单（高分等回调）")
+            lines.append("")
+            for row in watch_items:
+                name = row['instId'].replace('-USDT-SWAP','')
+                chg = row['chg24h']
+                all_scores = {
+                    '蓄力': row.get('scoreAccumulating', 0),
+                    '突破': row.get('scorePreBreakout', 0),
+                    '卷土': row.get('reSurgeScore', 0),
+                    '稳健': row.get('steadyScore', 0),
+                }
+                best_label = max(all_scores, key=all_scores.get)
+                best_score = all_scores[best_label]
+                lines.append(f"  {name}  ${fmt_price(row['last'])}  +{chg:.2f}%  {best_label}{best_score:.0f}分  ⏳等回调")
+                had_any = True
 
     if not had_any:
         return "NO_SIGNALS"
